@@ -7,27 +7,41 @@ const REDIS_PORT = 6379; // Redis default port (6379)
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD || '';  // Redis password if required
 const WSS_PORT = process.env.PORT || 8080;  // WebSocket server port (defaults to 8080)
 
-// Initialize Redis client
+// Initialize Redis client with automatic reconnection on errors
 const redis = new Redis({
     host: REDIS_HOST,
     port: REDIS_PORT,
     password: REDIS_PASSWORD,
-    retryStrategy: (times) => Math.min(times * 50, 2000), // Exponential backoff for retries
-    reconnectOnError: () => 1, // Auto-reconnect on errors
-    maxRetriesPerRequest: null, // Retry indefinitely
-    connectTimeout: 10000, // Timeout in 10 seconds
+    retryStrategy: (times) => {
+        // Exponential backoff: Retry after 50ms, then 100ms, then 200ms, etc.
+        return Math.min(times * 50, 2000); 
+    },
+    reconnectOnError: (err) => {
+        // Auto-reconnect if there's an error
+        if (err.code === 'ECONNREFUSED') {
+            console.error('❌ Redis connection refused. Retrying...');
+            return true; // Retry indefinitely on error
+        }
+        return false; // Don't retry for other errors
+    },
+    maxRetriesPerRequest: 5,           // Retry up to 5 times per request
+    connectTimeout: 10000,             // Timeout for connection in 10 seconds
+    keepAlive: 60000,                  // Keep the connection alive with a 60-second timeout
 });
 
-// Event listeners for Redis connection
+// Redis event listeners
 redis.on('connect', () => {
     console.log('✅ Connected to Redis server.');
 });
+
 redis.on('error', (err) => {
     console.error('❌ Redis error:', err);
 });
+
 redis.on('close', () => {
     console.warn('❌ Redis connection closed unexpectedly.');
 });
+
 redis.on('reconnecting', () => {
     console.log('🔄 Reconnecting to Redis...');
 });
