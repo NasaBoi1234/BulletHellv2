@@ -1,27 +1,42 @@
-import { WebSocketServer } from 'ws';
-import { createClient } from 'ioredis';
-import express from 'express';
-import cors from 'cors';
+const { WebSocketServer } = require('ws');
+const Redis = require('ioredis');
+const express = require('express');
+const cors = require('cors');
 
-env.REDIS_URL = process.env.REDIS_URL || "your-upstash-url";
-env.REDIS_PASSWORD = process.env.REDIS_PASSWORD || "your-keydb-password";
-
-const db = new createClient(env.REDIS_URL, { password: env.REDIS_PASSWORD });
+// Connect to Upstash KeyDB
+const db = new Redis(process.env.REDIS_URL, { password: process.env.REDIS_PASSWORD });
 
 const app = express();
 app.use(cors());
+
+// Start the HTTP server
 const server = app.listen(443, () => console.log("Server running on port 443"));
+
+// Set up WebSocket server
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
+    console.log("New client connected");
+
     ws.on('message', async (message) => {
-        let data = JSON.parse(message);
-        if (data.action === "set") {
-            await db.set(data.variable, data.value);
-        } else if (data.action === "get") {
-            let value = await db.get(data.variable);
-            ws.send(JSON.stringify({ variable: data.variable, value }));
+        try {
+            let data = JSON.parse(message);
+
+            if (data.action === "set") {
+                await db.set(data.variable, data.value);
+                console.log(`Set ${data.variable} = ${data.value}`);
+            } else if (data.action === "get") {
+                let value = await db.get(data.variable);
+                ws.send(JSON.stringify({ variable: data.variable, value }));
+                console.log(`Get ${data.variable} = ${value}`);
+            }
+        } catch (error) {
+            console.error("Error processing message:", error);
         }
+    });
+
+    ws.on('close', () => {
+        console.log("Client disconnected");
     });
 });
 
