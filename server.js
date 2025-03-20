@@ -3,8 +3,8 @@ import { createClient } from 'ioredis';
 import express from 'express';
 import cors from 'cors';
 
-env.REDIS_URL = process.env.REDIS_URL || "finer-meerkat-38166.upstash.io";
-env.REDIS_PASSWORD = process.env.REDIS_PASSWORD || "AZUWAAIjcDFhZWUzZGVjYTk4NTY0Mjg0YmRkNGI2MWQ1ZjIwNzM1MnAxMA";
+env.REDIS_URL = process.env.REDIS_URL || "your-upstash-url";
+env.REDIS_PASSWORD = process.env.REDIS_PASSWORD || "your-keydb-password";
 
 const db = new createClient(env.REDIS_URL, { password: env.REDIS_PASSWORD });
 
