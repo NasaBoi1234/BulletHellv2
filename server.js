@@ -1,43 +1,48 @@
-const { WebSocketServer } = require('ws');
-const Redis = require('ioredis');
-const express = require('express');
-const cors = require('cors');
-
-// Connect to Upstash KeyDB
-const db = new Redis(process.env.REDIS_URL, { password: process.env.REDIS_PASSWORD });
+const express = require("express");
+const Redis = require("ioredis");
+const http = require("http");
 
 const app = express();
-app.use(cors());
+const server = http.createServer(app);
 
-// Start the HTTP server
-const server = app.listen(443, () => console.log("Server running on port 443"));
+// Load Railway environment variables
+const REDIS_URL = process.env.REDIS_URL; // Railway Redis URL
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD; // Railway Redis password
 
-// Set up WebSocket server
-const wss = new WebSocketServer({ server });
+if (!REDIS_URL) {
+    console.error("❌ REDIS_URL is not set. Please configure it in Railway.");
+    process.exit(1);
+}
 
-wss.on('connection', (ws) => {
-    console.log("New client connected");
-
-    ws.on('message', async (message) => {
-        try {
-            let data = JSON.parse(message);
-
-            if (data.action === "set") {
-                await db.set(data.variable, data.value);
-                console.log(`Set ${data.variable} = ${data.value}`);
-            } else if (data.action === "get") {
-                let value = await db.get(data.variable);
-                ws.send(JSON.stringify({ variable: data.variable, value }));
-                console.log(`Get ${data.variable} = ${value}`);
-            }
-        } catch (error) {
-            console.error("Error processing message:", error);
-        }
-    });
-
-    ws.on('close', () => {
-        console.log("Client disconnected");
-    });
+// Configure Redis connection
+const redis = new Redis(REDIS_URL, {
+    password: REDIS_PASSWORD,
+    retryStrategy: (times) => Math.min(times * 50, 2000), // Gradual retry
+    reconnectOnError: () => 1, // Auto-reconnect on errors
+    maxRetriesPerRequest: null, // Prevents unnecessary request failures
 });
 
-console.log("WebSocket server running on wss://yourserver.up.railway.app");
+// Handle Redis events
+redis.on("error", (err) => {
+    console.error("❌ Redis error:", err);
+});
+
+redis.on("connect", () => {
+    console.log("✅ Connected to Redis!");
+});
+
+// Sample route for testing
+app.get("/", async (req, res) => {
+    try {
+        await redis.ping();
+        res.send("✅ Redis is working!");
+    } catch (err) {
+        res.status(500).send("❌ Redis error: " + err);
+    }
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
