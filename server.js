@@ -1,33 +1,26 @@
 const WebSocket = require('ws');
 const Redis = require('ioredis');
 
-// Environment variables for Redis and WebSocket
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';  // The Redis host (e.g., 'localhost' or Railway URL)
-const REDIS_PORT = 6379; // Redis default port (6379)
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || '';  // Redis password if required
-const WSS_PORT = process.env.PORT || 8080;  // WebSocket server port (defaults to 8080)
+// Get the Redis connection URL and password from environment variables (set in Railway)
+const REDIS_URL = process.env.REDIS_URL; // The URL for Redis without password
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD; // The password for Redis
+const WSS_URL = 'wss://bullethellv2-production.up.railway.app'; // WebSocket URL, replace with your own if different
 
-// Initialize Redis client with automatic reconnection on errors
-const redis = new Redis({
-    host: REDIS_HOST,
-    port: REDIS_PORT,
-    password: REDIS_PASSWORD,
-    retryStrategy: (times) => {
-        // Exponential backoff: Retry after 50ms, then 100ms, then 200ms, etc.
-        return Math.min(times * 50, 2000); 
-    },
-    reconnectOnError: (err) => {
-        // Auto-reconnect if there's an error
-        if (err.code === 'ECONNREFUSED') {
-            console.error('❌ Redis connection refused. Retrying...');
-            return true; // Retry indefinitely on error
-        }
-        return false; // Don't retry for other errors
-    },
-    maxRetriesPerRequest: 5,           // Retry up to 5 times per request
-    connectTimeout: 10000,             // Timeout for connection in 10 seconds
-    keepAlive: 60000,                  // Keep the connection alive with a 60-second timeout
-});
+if (!REDIS_URL || !REDIS_PASSWORD) {
+    console.error('❌ REDIS_URL or REDIS_PASSWORD is not set! Please check your environment variables.');
+    process.exit(1);  // Exit if Redis URL or password is not set
+}
+
+// Combine the REDIS_URL and REDIS_PASSWORD to form the full Redis connection string
+const redisConfig = {
+    host: REDIS_URL.split(':')[0], // Get the host part of the URL
+    port: 6379, // Default Redis port
+    password: REDIS_PASSWORD, // Password set in Railway environment variables
+    tls: {} // Add TLS if required by the service
+};
+
+// Initialize Redis client with the connection URL and password
+const redis = new Redis(redisConfig);
 
 // Redis event listeners
 redis.on('connect', () => {
@@ -46,13 +39,13 @@ redis.on('reconnecting', () => {
     console.log('🔄 Reconnecting to Redis...');
 });
 
-// Initialize WebSocket server
+// WebSocket server setup (on Railway's PORT)
+const WSS_PORT = process.env.PORT || 8080; // Default to 8080 if no environment variable is set
 const wss = new WebSocket.Server({ port: WSS_PORT });
 
 wss.on('connection', (ws) => {
     console.log('✅ New WebSocket connection established.');
 
-    // Handle incoming messages
     ws.on('message', async (message) => {
         let data;
         try {
@@ -106,16 +99,13 @@ wss.on('connection', (ws) => {
         }
     });
 
-    // Handle WebSocket connection closure
     ws.on('close', () => {
         console.log('❌ WebSocket connection closed.');
     });
 
-    // Handle WebSocket errors
     ws.on('error', (error) => {
         console.error('❌ WebSocket error:', error);
     });
 });
 
-// Log when WebSocket server starts
-console.log(`✅ WebSocket server listening on ws://localhost:${WSS_PORT}`);
+console.log(`✅ WebSocket server listening on wss://${WSS_URL}:${WSS_PORT}`);
