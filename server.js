@@ -1,22 +1,3 @@
-const WebSocket = require('ws');
-const redis = require('redis');
-const { WebSocketServer } = WebSocket;
-
-// Connect to Redis using the provided URL and password from environment variables
-const REDIS_URL = process.env.REDIS_URL;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-const redisClient = redis.createClient({
-    url: REDIS_URL,
-    password: REDIS_PASSWORD,
-    socket: {
-        reconnectStrategy: (retries) => Math.min(retries * 50, 5000),
-    },
-});
-
-redisClient.connect().then(() => console.log('Connected to Redis'));
-
-const wss = new WebSocketServer({ port: 8080 });
-
 wss.on('connection', (ws) => {
     console.log('✅ New WebSocket connection established.');
 
@@ -29,8 +10,8 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        const { action, variable, value } = data;
-        console.log(`Received action: ${action}, variable: ${variable}, value: ${value}`);
+        const { action, variable, value, score } = data;
+        console.log(`Received action: ${action}, variable: ${variable}, value: ${value}, score: ${score}`);
 
         switch (action) {
             case 'set':
@@ -65,6 +46,23 @@ wss.on('connection', (ws) => {
                 }
                 break;
 
+            case 'search':
+                if (score) {
+                    const keys = await redisClient.keys('*');  // Search for all keys
+                    let matchingKeys = [];
+                    for (const key of keys) {
+                        const value = await redisClient.get(key);
+                        if (value === score) {
+                            matchingKeys.push(key);
+                        }
+                    }
+                    console.log(`✅ Search result for score ${score}:`, matchingKeys);
+                    ws.send(JSON.stringify({ score, keys: matchingKeys }));
+                } else {
+                    ws.send(JSON.stringify({ error: 'Invalid score' }));
+                }
+                break;
+
             default:
                 console.error('❌ Unknown action:', action);
                 ws.send(JSON.stringify({ error: 'Unknown action' }));
@@ -79,5 +77,3 @@ wss.on('connection', (ws) => {
         console.error('❌ WebSocket error:', error);
     });
 });
-
-console.log('✅ WebSocket server started on ws://localhost:8080');
